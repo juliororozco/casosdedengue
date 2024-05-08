@@ -1,10 +1,8 @@
-from logging import root
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import pandas as pd
 import matplotlib.pyplot as plt
 from pandastable import Table, TableModel
-
 
 #diccionario de datos para mostar municipios  y departamentos en la tabla
 dpto_mapping = {
@@ -1238,10 +1236,6 @@ municipio_mapping = {
 '773':'CUMARIBO',
 }
 }
-
-
-
-
 def cargar_archivo():
     global datos
     global variables
@@ -1253,17 +1247,31 @@ def cargar_archivo():
         # Cargar el archivo CSV en un DataFrame
         datos = pd.read_csv(ruta_archivo)
         
+        # Añadir información del DANE al DataFrame cargado
+        datos = agregar_info_dane(datos)
+        
         # Listar las variables cargadas del archivo
         variables = datos.columns.tolist()
         
         # Mostrar mensaje de éxito
         messagebox.showinfo("Éxito", "Archivo cargado exitosamente.")
+        
+        # Mostrar tabla con los datos y la información del DANE
+        mostrar_tabla(datos)
+        
     except FileNotFoundError:
         messagebox.showerror("Error", "No se seleccionó ningún archivo.")
     except Exception as e:
         messagebox.showerror("Error", f"Ocurrió un error: {e}")
 
+
 def agregar_info_dane(df):
+    global datos
+    
+    # Cargar los datos si no se han cargado previamente
+    if datos is None:
+        cargar_archivo()
+        
     # Verificar si hay un DANE válido antes de asignar el nombre del departamento y municipio
     df['Departamento'] = ''
     df['Municipio'] = ''
@@ -1271,21 +1279,22 @@ def agregar_info_dane(df):
     for index, row in df.iterrows():
         dane = str(row['DANE'])  # Convertir el DANE a string para garantizar la longitud
         if len(dane) == 5:
-            # Asignar departamento basado en los dos primeros dígitos del DANE
-            if dane[:2] == '11':
-                df.at[index, 'Departamento'] = 'Bogotá D.C.'
-            elif dane[:2] == '08':
-                df.at[index, 'Departamento'] = 'Atlántico'
-            # Asignar municipio basado en los tres últimos dígitos del DANE
-            df.at[index, 'Municipio'] = dane[2:]
+            # Verificar si el código DANE corresponde a un departamento válido
+            departamento = dpto_mapping.get(dane[:2])
+            if departamento:
+                df.at[index, 'Departamento'] = departamento
+                # Verificar si el código DANE del municipio es válido para el departamento
+                municipio = municipio_mapping.get(dane[:2], {}).get(dane[2:])
+                if municipio:
+                    df.at[index, 'Municipio'] = municipio
         elif len(dane) == 4:
             # Validar que los códigos DANE de 4 dígitos correspondan a Antioquia o Atlántico
-            if dane[:1] == '5':
-                df.at[index, 'Departamento'] = 'Antioquia'
-            elif dane[:1] == '8':
-                df.at[index, 'Departamento'] = 'Atlántico'
-            # Asignar municipio basado en los últimos tres dígitos del DANE
-            df.at[index, 'Municipio'] = dane[1:]
+            departamento = dpto_mapping.get(dane[:1])
+            if departamento in ['Antioquia', 'Atlántico']:
+                df.at[index, 'Departamento'] = departamento
+                municipio = municipio_mapping.get(dane[:1], {}).get(dane[1:])
+                if municipio:
+                    df.at[index, 'Municipio'] = municipio
         else:
             # Cualquier otro caso de longitud del DANE se considera inválido
             df.at[index, 'Departamento'] = 'Inválido'
@@ -1293,15 +1302,20 @@ def agregar_info_dane(df):
     return df
 
 def mostrar_tabla(df):
+    global datos
+    
+    # Cargar los datos si no se han cargado previamente
+    if datos is None:
+        cargar_archivo()
+    
     if 'pt' not in globals():
-        frame = tk.Frame(root)
+        frame = tk.Frame(ventana)  # Usamos 'ventana' en lugar de 'root'
         frame.pack(fill='both', expand=True)
         global pt
         pt = Table(frame, dataframe=df, showtoolbar=True, showstatusbar=True)
         pt.show()
     else:
         pt.updateModel(TableModel(df))
-
 
 def mostrar_estadisticas():
     global datos
