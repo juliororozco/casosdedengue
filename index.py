@@ -3,9 +3,47 @@ from tkinter import filedialog, messagebox
 import pandas as pd
 import matplotlib.pyplot as plt
 from pandastable import Table, TableModel
+from geopy.geocoders import ArcGIS
+import plotly.graph_objects as go
+
 
 #diccionario de datos para mostar municipios  y departamentos en la tabla
 dpto_mapping = {
+    '5': 'Antioquia',
+    '8': 'Atlántico',
+    '11': 'Bogotá D.C.',
+    '13': 'Bolívar',
+    '15': 'Boyacá',
+    '17': 'Caldas',
+    '18': 'Caquetá',
+    '19': 'Cauca',
+    '20': 'Cesar',
+    '23': 'Córdoba',
+    '25': 'Cundinamarca',
+    '27': 'Chocó',
+    '41': 'Huila',
+    '44': 'La Guajira',
+    '47': 'Magdalena',
+    '50': 'Meta',
+    '52': 'Nariño',
+    '54': 'Norte de Santander',
+    '63': 'Quindío',
+    '66': 'Risaralda',
+    '68': 'Santander',
+    '70': 'Sucre',
+    '73': 'Tolima',
+    '76': 'Valle del Cauca',
+    '81': 'Arauca',
+    '85': 'Casanare',
+    '86': 'Putumayo',
+    '88': 'San Andrés y Providencia',
+    '91': 'Amazonas',
+    '94': 'Guainía',
+    '95': 'Guaviare',
+    '97': 'Vaupés',
+    '99': 'Vichada'
+}
+dpto_lap = {
     '5': 'Antioquia',
     '8': 'Atlántico',
     '11': 'Bogotá D.C.',
@@ -1264,8 +1302,16 @@ def cargar_archivo():
     except Exception as e:
         messagebox.showerror("Error", f"Ocurrió un error: {e}")
 
-
 def agregar_info_dane(df):
+    """
+    Agrega información del DANE, incluyendo departamento, municipio y coordenadas de latitud y longitud al DataFrame.
+    
+    Args:
+    - df: DataFrame de pandas que contiene los datos a los que se les agregará la información del DANE.
+    
+    Returns:
+    - df: DataFrame con la información del DANE agregada.
+    """
     global datos
     
     # Cargar los datos si no se han cargado previamente
@@ -1275,6 +1321,11 @@ def agregar_info_dane(df):
     # Verificar si hay un DANE válido antes de asignar el nombre del departamento y municipio
     df['Departamento'] = ''
     df['Municipio'] = ''
+    df['Latitud'] = None
+    df['Longitud'] = None
+    
+    # Obtener las coordenadas de latitud y longitud para cada departamento
+    dpto_lat_long = obtener_coordenadas(dpto_mapping)
     
     for index, row in df.iterrows():
         dane = str(row['DANE'])  # Convertir el DANE a string para garantizar la longitud
@@ -1298,6 +1349,13 @@ def agregar_info_dane(df):
         else:
             # Cualquier otro caso de longitud del DANE se considera inválido
             df.at[index, 'Departamento'] = 'Inválido'
+        
+        # Agregar las coordenadas de latitud y longitud si están disponibles
+        codigo_departamento = dane[:2]
+        if codigo_departamento in dpto_lat_long:
+            latitud, longitud = dpto_lat_long[codigo_departamento]
+            df.at[index, 'Latitud'] = latitud
+            df.at[index, 'Longitud'] = longitud
     
     return df
 
@@ -1316,6 +1374,37 @@ def mostrar_tabla(df):
         pt.show()
     else:
         pt.updateModel(TableModel(df))
+
+#***********************************************************************************************************************
+def obtener_coordenadas(dpto_mapping):
+    """
+    Obtiene las coordenadas de latitud y longitud para cada departamento en el diccionario dpto_mapping.
+    
+    Args:
+    - dpto_mapping: Diccionario que mapea los códigos DANE a los nombres de los departamentos.
+    
+    Returns:
+    - dpto_lat_long: Diccionario que mapea los códigos DANE a las coordenadas de latitud y longitud.
+    """
+    geolocator = ArcGIS()
+    dpto_lat_long = {}
+    
+    for codigo, departamento in dpto_mapping.items():
+        location = geolocator.geocode(departamento + ", Colombia")
+        if location:
+            dpto_lat_long[codigo] = (location.latitude, location.longitude)
+        else:
+            print(f"No se encontraron coordenadas para {departamento}")
+    
+    return dpto_lat_long
+
+# Ejemplo de uso
+dpto_lat_long = obtener_coordenadas(dpto_mapping)
+print(dpto_lat_long)
+
+
+
+#***********************************************************************************************************************
 
 def mostrar_estadisticas():
     global datos
@@ -1350,8 +1439,104 @@ def mostrar_estadisticas():
         plt.ylabel('Número de Casos')
         plt.grid(True)
         plt.show()
+        
+        # Estadísticas adicionales por departamento y municipio
+        plt.figure(figsize=(16, 10))
+        
+        # Departamentos con más casos de dengue
+        top_departamentos = datos.groupby('Departamento')['cases_all'].sum().nlargest(5)
+        plt.subplot(3, 2, 1)
+        top_departamentos.plot(kind='bar', color='skyblue')
+        plt.title('Top 5 Departamentos con Más Casos de Dengue')
+        plt.xlabel('Departamento')
+        plt.ylabel('Número de Casos')
+        plt.grid(True)
+        
+        # Municipios con más casos de dengue
+        top_municipios = datos.groupby('Municipio')['cases_all'].sum().nlargest(5)
+        plt.subplot(3, 2, 2)
+        top_municipios.plot(kind='bar', color='salmon')
+        plt.title('Top 5 Municipios con Más Casos de Dengue')
+        plt.xlabel('Municipio')
+        plt.ylabel('Número de Casos')
+        plt.grid(True)
+        
+        # Año con más casos de dengue
+        plt.subplot(3, 2, 3)
+        year_with_most_cases = datos.groupby('Ano')['cases_all'].sum().idxmax()
+        year_cases = datos.groupby('Ano')['cases_all'].sum()
+        year_cases.plot(kind='bar', color='purple')
+        plt.title(f'Año con Más Casos de Dengue: {year_with_most_cases}')
+        plt.xlabel('Año')
+        plt.ylabel('Número de Casos')
+        plt.grid(True)
+        
+        # Mes con más casos de dengue
+        plt.subplot(3, 2, 4)
+        month_with_most_cases = datos.groupby('Mes')['cases_all'].sum().idxmax()
+        month_cases = datos.groupby('Mes')['cases_all'].sum()
+        month_cases.plot(kind='bar', color='orange')
+        plt.title(f'Mes con Más Casos de Dengue: {month_with_most_cases}')
+        plt.xlabel('Mes')
+        plt.ylabel('Número de Casos')
+        plt.grid(True)
+        
+        plt.tight_layout()
+        plt.show()
+        
     else:
         messagebox.showwarning("Advertencia", "No se han cargado datos aún.")
+
+#******************************************************************************************************************************
+def mostrar_mapa():
+    global datos
+
+    # Verificar si hay datos cargados
+    if datos is None:
+        print("No se han cargado datos.")
+        return
+
+    
+
+    # Calcular el total de casos por departamento
+    total_casos_por_departamento = datos.groupby('Departamento')['cases_all'].sum()
+
+    # Obtener los 5 departamentos con más casos
+    top_departamentos = total_casos_por_departamento.nlargest(5)
+
+    # Restablecer el índice de datos
+    datos_reset_index = datos.reset_index()
+
+    # Crear el texto de información para cada departamento
+    hover_text = []
+    for departamento, total_casos in total_casos_por_departamento.items():
+        hover_text.append(f"{departamento}<br>Total de casos: {total_casos}")
+
+    # Crear el mapa de calor
+    fig = go.Figure(go.Densitymapbox(
+        lat=datos_reset_index['Latitud'],  # Latitud de los 5 departamentos
+        lon=datos_reset_index['Longitud'],  # Longitud de los 5 departamentos
+        z=datos_reset_index['cases_all'],  # Casos de dengue por cada punto
+        radius=10,
+        colorscale="YlOrRd",  # Escala de colores
+        zmin=0,
+        zmax=datos_reset_index['cases_all'].max(),
+        hovertext=hover_text  # Agregar texto de información al pasar el ratón
+    ))
+
+    # Configurar el diseño del mapa
+    fig.update_layout(
+        mapbox_style="carto-positron",
+        mapbox_zoom=4,
+        mapbox_center={"lat": 4.5709, "lon": -74.2973},
+        margin={"r":0,"t":0,"l":0,"b":0}  # Reducir los márgenes para ocupar más espacio
+    )
+
+    # Guardar el mapa como un archivo HTML
+    fig.write_html("mapa_interactivo.html")
+
+#******************************************************************************************************************************
+
 
 # Inicializar variables globales para almacenar los datos cargados
 datos = None
@@ -1371,6 +1556,9 @@ boton_estadisticas.pack(pady=10)
 
 # Botón para mostrar la tabla
 boton_mostrar_tabla = tk.Button(ventana, text="Mostrar Tabla", command=lambda: mostrar_tabla(datos))
+boton_mostrar_tabla.pack(pady=10)
+
+boton_mostrar_tabla = tk.Button(ventana, text="Mostrar Mapa", command=lambda: mostrar_mapa())
 boton_mostrar_tabla.pack(pady=10)
 
 # Mantener el programa en ejecución
